@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FlagGuessr</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e1a;
+  --navy: #0d1526;
+  --panel: #111827;
+  --border: #1e2d47;
+  --border2: #2a3f5f;
+  --blue: #3b82f6;
+  --blue-dim: #1e3a5f;
+  --cyan: #06b6d4;
+  --text: #e2e8f0;
+  --muted: #64748b;
+  --green: #10b981;
+  --red: #ef4444;
+  --yellow: #f59e0b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; width: 100%; background: var(--bg); font-family: 'IBM Plex Sans', sans-serif; color: var(--text); overflow: hidden; -webkit-tap-highlight-color: transparent; }
+
+/* grid bg */
+body::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image:
+    linear-gradient(rgba(59,130,246,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59,130,246,.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.app { display: flex; flex-direction: column; height: 100%; position: relative; z-index: 1; }
+
+/* HEADER */
+header {
+  flex-shrink: 0; height: 52px;
+  background: var(--navy); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px;
+}
+.logo { font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 600; color: var(--cyan); letter-spacing: 1px; }
+.logo span { color: var(--text); }
+.hud { display: flex; align-items: center; gap: 20px; }
+.hud-item { text-align: right; }
+.hud-lbl { font-family: 'IBM Plex Mono', monospace; font-size: 8px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
+.hud-val { font-family: 'IBM Plex Mono', monospace; font-size: 20px; color: var(--cyan); line-height: 1; }
+.pips { display: flex; gap: 5px; align-items: center; }
+.pip { width: 8px; height: 8px; border-radius: 1px; background: var(--border); border: 1px solid var(--border2); transition: all .3s; }
+.pip.done { background: var(--blue-dim); border-color: var(--blue); }
+.pip.cur  { background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+
+/* MAIN CONTENT */
+#main {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 16px; gap: 20px; min-height: 0; overflow-y: auto;
+}
+
+/* REVEAL STATUS */
+#reveal-status {
+  display: flex; align-items: center; gap: 12px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  color: var(--muted); letter-spacing: 1px; text-transform: uppercase;
+}
+.reveal-bar { display: flex; gap: 4px; }
+.reveal-seg {
+  width: 28px; height: 6px; border-radius: 2px;
+  background: var(--border); border: 1px solid var(--border2);
+  transition: all .3s;
+}
+.reveal-seg.lit { background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 4px var(--cyan); }
+.multiplier-badge {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  padding: 3px 8px; border-radius: 3px;
+  background: rgba(245,158,11,.12); color: var(--yellow);
+  border: 1px solid rgba(245,158,11,.3);
+}
+
+/* FLAG CONTAINER */
+#flag-container {
+  position: relative; width: 100%; max-width: 420px;
+  border: 1px solid var(--border2);
+  border-radius: 4px; overflow: hidden;
+  box-shadow: 0 0 40px rgba(6,182,212,.08), 0 8px 32px rgba(0,0,0,.4);
+  background: #1a1a2e;
+  aspect-ratio: 3/2;
+}
+
+/* The flag itself */
+#flag-svg {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  display: block;
+}
+
+/* Reveal overlay — covers portions of the flag */
+#reveal-overlay {
+  position: absolute; inset: 0;
+  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+  pointer-events: none;
+}
+.cover-cell {
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'IBM Plex Mono', monospace; font-size: 22px; color: var(--border2);
+  transition: opacity .6s ease;
+  border: 1px solid var(--border);
+}
+.cover-cell.revealed { opacity: 0; pointer-events: none; }
+
+/* Reveal button */
+#reveal-btn {
+  width: 100%; max-width: 420px;
+  background: transparent; color: var(--blue);
+  font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 2px;
+  border: 1px solid var(--blue-dim); padding: 10px;
+  border-radius: 4px; cursor: pointer; transition: all .2s;
+  text-transform: uppercase;
+}
+#reveal-btn:hover { background: rgba(59,130,246,.08); border-color: var(--blue); }
+#reveal-btn:disabled { opacity: .3; cursor: not-allowed; }
+#reveal-btn.fully-revealed { display: none; }
+
+/* ANSWER INPUT */
+#answer-section {
+  width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 10px;
+}
+#answer-hint {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  letter-spacing: 1px; color: var(--muted); text-transform: uppercase;
+  text-align: center;
+}
+
+/* Country grid */
+#country-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 6px; max-height: 240px; overflow-y: auto;
+}
+#country-grid::-webkit-scrollbar { width: 4px; }
+#country-grid::-webkit-scrollbar-track { background: var(--border); }
+#country-grid::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.country-btn {
+  background: var(--panel); border: 1px solid var(--border);
+  color: var(--text); font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px; padding: 10px 12px; border-radius: 4px;
+  cursor: pointer; text-align: left; transition: all .15s;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.country-btn:hover { background: var(--border); border-color: var(--blue); color: var(--cyan); }
+.country-btn.correct { background: rgba(16,185,129,.12); border-color: var(--green); color: var(--green); }
+.country-btn.wrong   { background: rgba(239,68,68,.1);   border-color: var(--red);   color: var(--red);   opacity: .5; }
+.country-btn:disabled { cursor: not-allowed; }
+
+/* Search filter */
+#country-search {
+  width: 100%; background: var(--panel); border: 1px solid var(--border);
+  color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 13px;
+  padding: 10px 14px; border-radius: 4px; outline: none;
+  transition: border-color .2s;
+}
+#country-search::placeholder { color: var(--muted); }
+#country-search:focus { border-color: var(--blue); }
+
+/* RESULT CARD */
+#result-card {
+  display: none; width: 100%; max-width: 420px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 20px; text-align: center;
+}
+#result-card.show { display: block; }
+.result-flag-preview {
+  width: 120px; height: 80px; margin: 0 auto 14px;
+  border: 1px solid var(--border2); border-radius: 3px; overflow: hidden;
+}
+.result-flag-preview svg { width: 100%; height: 100%; display: block; }
+.res-country { font-size: 20px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.res-outcome { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 2px; margin-bottom: 12px; }
+.res-outcome.correct { color: var(--green); }
+.res-outcome.wrong   { color: var(--red); }
+.res-pts { font-family: 'IBM Plex Mono', monospace; font-size: 48px; font-weight: 600; color: var(--cyan); line-height: 1; }
+.res-pts-lbl { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+.res-detail { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+.res-detail span { color: var(--text); }
+.btn-next {
+  width: 100%; background: var(--cyan); color: var(--bg);
+  font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 600; letter-spacing: 2px;
+  border: none; padding: 13px; border-radius: 4px; cursor: pointer;
+  text-transform: uppercase;
+}
+.btn-next:active { opacity: .85; }
+
+/* FINAL SCORE */
+#final-screen {
+  display: none; width: 100%; max-width: 420px; text-align: center;
+}
+#final-screen.show { display: block; }
+.final-title { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
+.final-score { font-family: 'IBM Plex Mono', monospace; font-size: 80px; font-weight: 600; color: var(--cyan); line-height: 1; }
+.final-max { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+.final-grade { font-size: 14px; padding: 6px 16px; border-radius: 20px; display: inline-block; margin-bottom: 20px; }
+.fg-perfect { background: rgba(16,185,129,.12); color: var(--green); border: 1px solid rgba(16,185,129,.3); }
+.fg-great   { background: rgba(6,182,212,.12);   color: var(--cyan);  border: 1px solid rgba(6,182,212,.3); }
+.fg-ok      { background: rgba(245,158,11,.12);  color: var(--yellow);border: 1px solid rgba(245,158,11,.3); }
+.fg-miss    { background: rgba(239,68,68,.1);    color: var(--red);   border: 1px solid rgba(239,68,68,.3); }
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <div class="logo">Flag<span>Guessr</span></div>
+  <div class="hud">
+    <div class="pips" id="pips"></div>
+    <div class="hud-item">
+      <div class="hud-lbl">Score</div>
+      <div class="hud-val" id="hud-score">0</div>
+    </div>
+  </div>
+</header>
+
+<div id="main">
+
+  <div id="reveal-status">
+    <span id="reveal-label">Revealed:</span>
+    <div class="reveal-bar" id="reveal-bar"></div>
+    <div class="multiplier-badge" id="mult-badge">×4</div>
+  </div>
+
+  <div id="flag-container">
+    <svg id="flag-svg" viewBox="0 0 900 600" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="reveal-overlay">
+      <div class="cover-cell" id="cell-0">?</div>
+      <div class="cover-cell" id="cell-1">?</div>
+      <div class="cover-cell" id="cell-2">?</div>
+      <div class="cover-cell" id="cell-3">?</div>
+    </div>
+  </div>
+
+  <button id="reveal-btn" onclick="revealNext()">▼ Reveal more flag</button>
+
+  <div id="answer-section">
+    <div id="answer-hint">Which country is this flag?</div>
+    <input type="text" id="country-search" placeholder="Search countries…" oninput="filterCountries(this.value)" autocomplete="off" autocorrect="off" spellcheck="false">
+    <div id="country-grid"></div>
+  </div>
+
+  <div id="result-card">
+    <div class="result-flag-preview" id="res-flag-preview"></div>
+    <div class="res-country" id="res-country"></div>
+    <div class="res-outcome" id="res-outcome"></div>
+    <div class="res-pts" id="res-pts">0</div>
+    <div class="res-pts-lbl">points</div>
+    <div class="res-detail" id="res-detail"></div>
+    <button class="btn-next" id="btn-next" onclick="nextRound()">Next Flag →</button>
+  </div>
+
+  <div id="final-screen">
+    <div class="final-title">Mission Complete</div>
+    <div class="final-score" id="final-score">0</div>
+    <div class="final-max" id="final-max">out of 0 possible</div>
+    <div class="final-grade" id="final-grade"></div>
+    <button class="btn-next" onclick="location.reload()">↺ Play Again</button>
+  </div>
+
+</div><!-- #main -->
+
+<script>
+// ─────────────────────────────────────────────
+// FLAGS — drawn as inline SVG, no external images needed
+// Format: { name, svg (content inside viewBox 0 0 900 600), region }
+// ─────────────────────────────────────────────
+const FLAGS = [
+  {
+    name: 'Japan',
+    svg: `<rect width="900" height="600" fill="#fff"/>
+          <circle cx="450" cy="300" r="180" fill="#bc002d"/>`,
+  },
+  {
+    name: 'France',
+    svg: `<rect width="300" height="600" fill="#002395"/>
+          <rect x="300" width="300" height="600" fill="#fff"/>
+          <rect x="600" width="300" height="600" fill="#ed2939"/>`,
+  },
+  {
+    name: 'Germany',
+    svg: `<rect width="900" height="200" fill="#000"/>
+          <rect y="200" width="900" height="200" fill="#dd0000"/>
+          <rect y="400" width="900" height="200" fill="#ffce00"/>`,
+  },
+  {
+    name: 'Italy',
+    svg: `<rect width="300" height="600" fill="#009246"/>
+          <rect x="300" width="300" height="600" fill="#fff"/>
+          <rect x="600" width="300" height="600" fill="#ce2b37"/>`,
+  },
+  {
+    name: 'Brazil',
+    svg: `<rect width="900" height="600" fill="#009c3b"/>
+          <polygon points="450,60 840,300 450,540 60,300" fill="#fedf00"/>
+          <circle cx="450" cy="300" r="138" fill="#002776"/>
+          <path d="M312,258 Q450,210 588,258" stroke="#fff" stroke-width="22" fill="none"/>`,
+  },
+  {
+    name: 'Canada',
+    svg: `<rect width="225" height="600" fill="#ff0000"/>
+          <rect x="225" width="450" height="600" fill="#fff"/>
+          <rect x="675" width="225" height="600" fill="#ff0000"/>
+          <g transform="translate(450,295)">
+            <path d="M0,-135 L18,-60 L75,-90 L55,-35 L120,-40 L85,10 L110,15 L70,65 L80,110 L30,95 L0,150 L-30,95 L-80,110 L-70,65 L-110,15 L-85,10 L-120,-40 L-55,-35 L-75,-90 L-18,-60 Z" fill="#ff0000"/>
+          </g>`,
+  },
+  {
+    name: 'Australia',
+    svg: `<rect width="900" height="600" fill="#00008b"/>
+          <rect width="360" height="240" fill="#00008b"/>
+          <!-- Union Jack simplified -->
+          <line x1="0" y1="0" x2="360" y2="240" stroke="#fff" stroke-width="48"/>
+          <line x1="360" y1="0" x2="0" y2="240" stroke="#fff" stroke-width="48"/>
+          <line x1="0" y1="0" x2="360" y2="240" stroke="#cc0000" stroke-width="32"/>
+          <line x1="360" y1="0" x2="0" y2="240" stroke="#cc0000" stroke-width="32"/>
+          <rect x="0" y="96" width="360" height="48" fill="#fff"/>
+          <rect x="156" y="0" width="48" height="240" fill="#fff"/>
+          <rect x="0" y="108" width="360" height="24" fill="#cc0000"/>
+          <rect x="168" y="0" width="24" height="240" fill="#cc0000"/>
+          <!-- Stars -->
+          <g fill="#fff" font-size="40" text-anchor="middle">
+            <text x="200" y="450">★</text>
+            <text x="640" y="200">★</text>
+            <text x="760" y="340">★</text>
+            <text x="680" y="470">★</text>
+            <text x="540" y="360">★</text>
+          </g>`,
+  },
+  {
+    name: 'South Korea',
+    svg: `<rect width="900" height="600" fill="#fff"/>
+          <!-- Taegeuk -->
+          <circle cx="450" cy="300" r="120" fill="#cd2e3a"/>
+          <path d="M450,180 A120,120 0 0,1 450,420 A60,60 0 0,1 450,300 A60,60 0 0,0 450,180Z" fill="#003478"/>
+          <!-- Trigrams simplified -->
+          <g stroke="#000" stroke-width="18" stroke-linecap="round">
+            <line x1="250" y1="160" x2="320" y2="120"/><line x1="340" y1="148" x2="410" y2="108"/>
+            <line x1="250" y1="195" x2="410" y2="143"/>
+            <line x1="250" y1="230" x2="410" y2="178"/>
+            <line x1="490" y1="108" x2="560" y2="148"/><line x1="580" y1="120" x2="650" y2="160"/>
+            <line x1="490" y1="143" x2="650" y2="195"/>
+            <line x1="490" y1="178" x2="570" y2="215"/><line x1="590" y1="222" x2="650" y2="230"/>
+            <line x1="250" y1="370" x2="310" y2="408"/><line x1="330" y1="420" x2="410" y2="458"/>
+            <line x1="250" y1="405" x2="410" y2="493"/>
+            <line x1="250" y1="440" x2="410" y2="528"/>
+            <line x1="490" y1="458" x2="570" y2="420"/><line x1="590" y1="408" x2="650" y2="370"/>
+            <line x1="490" y1="493" x2="650" y2="405"/>
+            <line x1="490" y1="528" x2="650" y2="440"/>
+          </g>`,
+  },
+  {
+    name: 'Mexico',
+    svg: `<rect width="300" height="600" fill="#006847"/>
+          <rect x="300" width="300" height="600" fill="#fff"/>
+          <rect x="600" width="300" height="600" fill="#ce1126"/>
+          <!-- Eagle simplified -->
+          <circle cx="450" cy="300" r="55" fill="#8b6914" opacity="0.7"/>
+          <text x="450" y="320" text-anchor="middle" font-size="60">🦅</text>`,
+  },
+  {
+    name: 'Argentina',
+    svg: `<rect width="900" height="200" fill="#74acdf"/>
+          <rect y="200" width="900" height="200" fill="#fff"/>
+          <rect y="400" width="900" height="200" fill="#74acdf"/>
+          <!-- Sun of May -->
+          <circle cx="450" cy="300" r="60" fill="#f6b40e"/>
+          <g stroke="#f6b40e" stroke-width="8">
+            ${Array.from({length:16}, (_,i) => {
+              const a = i*22.5*Math.PI/180;
+              const r1=65, r2=95;
+              return `<line x1="${450+r1*Math.cos(a)}" y1="${300+r1*Math.sin(a)}" x2="${450+r2*Math.cos(a)}" y2="${300+r2*Math.sin(a)}"/>`;
+            }).join('')}
+          </g>`,
+  },
+  {
+    name: 'Sweden',
+    svg: `<rect width="900" height="600" fill="#006aa7"/>
+          <rect x="240" width="120" height="600" fill="#fecc02"/>
+          <rect y="240" width="900" height="120" fill="#fecc02"/>`,
+  },
+  {
+    name: 'Switzerland',
+    svg: `<rect width="900" height="600" fill="#ff0000"/>
+          <rect x="375" y="150" width="150" height="300" fill="#fff"/>
+          <rect x="225" y="225" width="450" height="150" fill="#fff"/>`,
+  },
+  {
+    name: 'Norway',
+    svg: `<rect width="900" height="600" fill="#ef2b2d"/>
+          <rect x="225" width="120" height="600" fill="#fff"/>
+          <rect y="240" width="900" height="120" fill="#fff"/>
+          <rect x="255" width="60" height="600" fill="#002868"/>
+          <rect y="270" width="900" height="60" fill="#002868"/>`,
+  },
+  {
+    name: 'Netherlands',
+    svg: `<rect width="900" height="200" fill="#ae1c28"/>
+          <rect y="200" width="900" height="200" fill="#fff"/>
+          <rect y="400" width="900" height="200" fill="#21468b"/>`,
+  },
+  {
+    name: 'Poland',
+    svg: `<rect width="900" height="300" fill="#fff"/>
+          <rect y="300" width="900" height="300" fill="#dc143c"/>`,
+  },
+  {
+    name: 'Ukraine',
+    svg: `<rect width="900" height="300" fill="#005bbb"/>
+          <rect y="300" width="900" height="300" fill="#ffd500"/>`,
+  },
+  {
+    name: 'Portugal',
+    svg: `<rect width="360" height="600" fill="#006600"/>
+          <rect x="360" width="540" height="600" fill="#ff0000"/>
+          <circle cx="360" cy="300" r="90" fill="#ffff00" stroke="#00008b" stroke-width="8"/>
+          <circle cx="360" cy="300" r="60" fill="#fff" stroke="#00008b" stroke-width="6"/>`,
+  },
+  {
+    name: 'Turkey',
+    svg: `<rect width="900" height="600" fill="#e30a17"/>
+          <circle cx="400" cy="300" r="120" fill="#fff"/>
+          <circle cx="440" cy="300" r="96" fill="#e30a17"/>
+          <polygon points="560,300 512,284 524,332 492,302 540,302 508,332 520,284" fill="#fff"/>`,
+  },
+  {
+    name: 'Greece',
+    svg: `<rect width="900" height="600" fill="#0d5eaf"/>
+          ${[0,1,2,3,4,6,7,8].map(i=>`<rect y="${i*66.7}" width="900" height="33.3" fill="${i%2===0?'#0d5eaf':'#fff'}"/>`).join('')}
+          <rect width="270" height="270" fill="#0d5eaf"/>
+          <rect x="108" width="54" height="270" fill="#fff"/>
+          <rect y="108" width="270" height="54" fill="#fff"/>`,
+  },
+  {
+    name: 'India',
+    svg: `<rect width="900" height="200" fill="#ff9933"/>
+          <rect y="200" width="900" height="200" fill="#fff"/>
+          <rect y="400" width="900" height="200" fill="#138808"/>
+          <circle cx="450" cy="300" r="72" fill="none" stroke="#000080" stroke-width="8"/>
+          <circle cx="450" cy="300" r="10" fill="#000080"/>
+          ${Array.from({length:24}, (_,i) => {
+            const a = i*15*Math.PI/180;
+            return `<line x1="450" y1="300" x2="${450+72*Math.cos(a-Math.PI/2)}" y2="${300+72*Math.sin(a-Math.PI/2)}" stroke="#000080" stroke-width="3"/>`;
+          }).join('')}`,
+  },
+  {
+    name: 'China',
+    svg: `<rect width="900" height="600" fill="#de2910"/>
+          <text x="140" y="200" font-size="160" fill="#ffde00">★</text>
+          <text x="340" y="120" font-size="70" fill="#ffde00">★</text>
+          <text x="410" y="200" font-size="70" fill="#ffde00">★</text>
+          <text x="410" y="300" font-size="70" fill="#ffde00">★</text>
+          <text x="340" y="380" font-size="70" fill="#ffde00">★</text>`,
+  },
+  {
+    name: 'United States',
+    svg: `${Array.from({length:13},(_,i)=>`<rect y="${i*46.15}" width="900" height="46.15" fill="${i%2===0?'#b22234':'#fff'}"/>`).join('')}
+          <rect width="360" height="323" fill="#3c3b6e"/>
+          ${Array.from({length:50},(_,i)=>{
+            const row=Math.floor(i/6), col=i%6;
+            const x=30+col*60+(row%2===1?30:0), y=30+row*54;
+            return x<360?`<text x="${x}" y="${y}" font-size="36" fill="#fff" text-anchor="middle">★</text>`:'';
+          }).join('')}`,
+  },
+  {
+    name: 'United Kingdom',
+    svg: `<rect width="900" height="600" fill="#012169"/>
+          <line x1="0" y1="0" x2="900" y2="600" stroke="#fff" stroke-width="120"/>
+          <line x1="900" y1="0" x2="0" y2="600" stroke="#fff" stroke-width="120"/>
+          <line x1="0" y1="0" x2="900" y2="600" stroke="#c8102e" stroke-width="80"/>
+          <line x1="900" y1="0" x2="0" y2="600" stroke="#c8102e" stroke-width="80"/>
+          <rect x="360" width="180" height="600" fill="#fff"/>
+          <rect y="210" width="900" height="180" fill="#fff"/>
+          <rect x="390" width="120" height="600" fill="#c8102e"/>
+          <rect y="240" width="900" height="120" fill="#c8102e"/>`,
+  },
+  {
+    name: 'Spain',
+    svg: `<rect width="900" height="150" fill="#c60b1e"/>
+          <rect y="150" width="900" height="300" fill="#ffc400"/>
+          <rect y="450" width="900" height="150" fill="#c60b1e"/>`,
+  },
+  {
+    name: 'Russia',
+    svg: `<rect width="900" height="200" fill="#fff"/>
+          <rect y="200" width="900" height="200" fill="#0033a0"/>
+          <rect y="400" width="900" height="200" fill="#cc0000"/>`,
+  },
+  {
+    name: 'South Africa',
+    svg: `<polygon points="0,0 0,600 300,300" fill="#007a4d"/>
+          <polygon points="0,0 540,0 330,150 0,150" fill="#001489"/>
+          <polygon points="0,450 330,450 540,600 0,600" fill="#de3831"/>
+          <polygon points="0,150 330,150 540,0 900,0 900,150 420,300 900,450 900,600 540,600 330,450 0,450" fill="#fff"/>
+          <polygon points="0,180 310,180 510,60 900,60 900,150 420,300 900,450 900,540 510,540 310,420 0,420" fill="#ffb612"/>
+          <polygon points="0,210 280,210 480,90 900,90 900,120 420,300 900,480 900,510 480,510 280,390 0,390" fill="#007a4d"/>`,
+  },
+  {
+    name: 'New Zealand',
+    svg: `<rect width="900" height="600" fill="#00247d"/>
+          <rect width="360" height="240" fill="#00247d"/>
+          <line x1="0" y1="0" x2="360" y2="240" stroke="#fff" stroke-width="48"/>
+          <line x1="360" y1="0" x2="0" y2="240" stroke="#fff" stroke-width="48"/>
+          <line x1="0" y1="0" x2="360" y2="240" stroke="#cc0000" stroke-width="32"/>
+          <line x1="360" y1="0" x2="0" y2="240" stroke="#cc0000" stroke-width="32"/>
+          <rect x="0" y="96" width="360" height="48" fill="#fff"/>
+          <rect x="156" y="0" width="48" height="240" fill="#fff"/>
+          <rect x="0" y="108" width="360" height="24" fill="#cc0000"/>
+          <rect x="168" y="0" width="24" height="240" fill="#cc0000"/>
+          <text x="580" y="180" font-size="80" fill="#cc0000" text-anchor="middle">★</text>
+          <text x="720" y="280" font-size="80" fill="#cc0000" text-anchor="middle">★</text>
+          <text x="660" y="420" font-size="80" fill="#cc0000" text-anchor="middle">★</text>
+          <text x="520" y="360" font-size="80" fill="#cc0000" text-anchor="middle">★</text>`,
+  },
+  {
+    name: 'Denmark',
+    svg: `<rect width="900" height="600" fill="#c60c30"/>
+          <rect x="270" width="120" height="600" fill="#fff"/>
+          <rect y="240" width="900" height="120" fill="#fff"/>`,
+  },
+  {
+    name: 'Finland',
+    svg: `<rect width="900" height="600" fill="#fff"/>
+          <rect x="210" width="120" height="600" fill="#003580"/>
+          <rect y="240" width="900" height="120" fill="#003580"/>`,
+  },
+  {
+    name: 'Austria',
+    svg: `<rect width="900" height="200" fill="#ed2939"/>
+          <rect y="200" width="900" height="200" fill="#fff"/>
+          <rect y="400" width="900" height="200" fill="#ed2939"/>`,
+  },
+  {
+    name: 'Belgium',
+    svg: `<rect width="300" height="600" fill="#000"/>
+          <rect x="300" width="300" height="600" fill="#fae042"/>
+          <rect x="600" width="300" height="600" fill="#ef3340"/>`,
+  },
+  {
+    name: 'Romania',
+    svg: `<rect width="300" height="600" fill="#002b7f"/>
+          <rect x="300" width="300" height="600" fill="#fcd116"/>
+          <rect x="600" width="300" height="600" fill="#ce1126"/>`,
+  },
+];
+
+// All country names for the selection grid
+const ALL_COUNTRIES = FLAGS.map(f => f.name).sort();
+
+// ─────────────────────────────────────────────
+// GAME CONFIG
+// ─────────────────────────────────────────────
+const TOTAL = 5;
+// Reveal stages: how many quadrants are visible at each stage
+// 0 revealed = multiplier 4, 1 = ×3, 2 = ×2, 3 = ×1, 4 (all) = ×0.5
+const MULTIPLIERS = [4, 3, 2, 1, 0.5];
+const BASE_SCORE = 1000;
+
+let rounds = [], curr = 0, totalScore = 0;
+let revealedCount = 0; // 0-4 quadrants revealed
+let answered = false;
+let currentFlag = null;
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  buildPips();
+  buildRevealBar();
+  startGame();
+});
+
+function startGame() {
+  const shuffled = [...FLAGS].sort(() => Math.random() - .5);
+  rounds = shuffled.slice(0, TOTAL);
+  curr = 0; totalScore = 0;
+  updateHUD();
+  loadRound();
+}
+
+function buildPips() {
+  const c = document.getElementById('pips'); c.innerHTML = '';
+  for (let i = 0; i < TOTAL; i++) {
+    const p = document.createElement('div'); p.className='pip'+(i===0?' cur':''); p.id=`p${i}`; c.appendChild(p);
+  }
+}
+function syncPips() {
+  for (let i = 0; i < TOTAL; i++) {
+    const p = document.getElementById(`p${i}`);
+    if (p) p.className='pip'+(i<curr?' done':i===curr?' cur':'');
+  }
+}
+function updateHUD() { document.getElementById('hud-score').textContent = totalScore.toLocaleString(); }
+
+function buildRevealBar() {
+  const bar = document.getElementById('reveal-bar'); bar.innerHTML = '';
+  for (let i = 0; i < 4; i++) {
+    const s = document.createElement('div'); s.className='reveal-seg'; s.id=`seg${i}`; bar.appendChild(s);
+  }
+}
+function syncRevealBar() {
+  for (let i = 0; i < 4; i++) {
+    document.getElementById(`seg${i}`).classList.toggle('lit', i < revealedCount);
+  }
+  const mult = MULTIPLIERS[Math.min(revealedCount, MULTIPLIERS.length-1)];
+  document.getElementById('mult-badge').textContent = `×${mult}`;
+}
+
+// ─────────────────────────────────────────────
+// ROUND
+// ─────────────────────────────────────────────
+function loadRound() {
+  currentFlag = rounds[curr];
+  revealedCount = 0;
+  answered = false;
+
+  // Hide result, show answer section
+  document.getElementById('result-card').classList.remove('show');
+  document.getElementById('answer-section').style.display = 'flex';
+  document.getElementById('reveal-btn').disabled = false;
+  document.getElementById('reveal-btn').classList.remove('fully-revealed');
+  document.getElementById('reveal-btn').textContent = '▼ Reveal more flag';
+  document.getElementById('country-search').value = '';
+
+  // Reset covers
+  for (let i = 0; i < 4; i++) {
+    document.getElementById(`cell-${i}`).classList.remove('revealed');
+    document.getElementById(`cell-${i}`).textContent = '?';
+  }
+
+  syncRevealBar();
+  syncPips();
+  updateHUD();
+
+  // Draw flag
+  document.getElementById('flag-svg').innerHTML = currentFlag.svg;
+
+  // Build country grid
+  buildCountryGrid(ALL_COUNTRIES);
+}
+
+function buildCountryGrid(countries) {
+  const grid = document.getElementById('country-grid'); grid.innerHTML = '';
+  countries.forEach(name => {
+    const btn = document.createElement('button');
+    btn.className = 'country-btn';
+    btn.textContent = name;
+    btn.onclick = () => submitGuess(name);
+    grid.appendChild(btn);
+  });
+}
+
+function filterCountries(query) {
+  const q = query.toLowerCase().trim();
+  const filtered = ALL_COUNTRIES.filter(n => n.toLowerCase().includes(q));
+  buildCountryGrid(filtered);
+}
+
+// ─────────────────────────────────────────────
+// REVEAL
+// ─────────────────────────────────────────────
+function revealNext() {
+  if (revealedCount >= 4) return;
+  document.getElementById(`cell-${revealedCount}`).classList.add('revealed');
+  revealedCount++;
+  syncRevealBar();
+
+  if (revealedCount >= 4) {
+    document.getElementById('reveal-btn').classList.add('fully-revealed');
+  }
+}
+
+// ─────────────────────────────────────────────
+// GUESS
+// ─────────────────────────────────────────────
+function submitGuess(name) {
+  if (answered) return;
+  answered = true;
+
+  const correct = name === currentFlag.name;
+  const mult = MULTIPLIERS[Math.min(revealedCount, MULTIPLIERS.length-1)];
+  const pts = correct ? Math.round(BASE_SCORE * mult) : 0;
+  totalScore += pts;
+
+  // Reveal all covers
+  for (let i = 0; i < 4; i++) document.getElementById(`cell-${i}`).classList.add('revealed');
+  revealedCount = 4;
+  syncRevealBar();
+
+  // Highlight the button
+  document.querySelectorAll('.country-btn').forEach(btn => {
+    if (btn.textContent === currentFlag.name) btn.classList.add('correct');
+    else if (btn.textContent === name && !correct) btn.classList.add('wrong');
+    btn.disabled = true;
+  });
+
+  showResult(correct, pts, mult, name);
+}
+
+function showResult(correct, pts, mult, guessed) {
+  document.getElementById('answer-section').style.display = 'none';
+  document.getElementById('reveal-btn').classList.add('fully-revealed');
+
+  const card = document.getElementById('result-card');
+  document.getElementById('res-flag-preview').innerHTML = `<svg viewBox="0 0 900 600" xmlns="http://www.w3.org/2000/svg">${currentFlag.svg}</svg>`;
+  document.getElementById('res-country').textContent = currentFlag.name;
+
+  const outcome = document.getElementById('res-outcome');
+  if (correct) {
+    outcome.textContent = '✓ CORRECT';
+    outcome.className = 'res-outcome correct';
+  } else {
+    outcome.textContent = `✗ YOU GUESSED ${guessed.toUpperCase()}`;
+    outcome.className = 'res-outcome wrong';
+  }
+
+  document.getElementById('res-pts').textContent = pts.toLocaleString();
+  const revealStage = ['no reveals','1 quadrant','2 quadrants','3 quadrants','full flag'][revealedCount];
+  document.getElementById('res-detail').innerHTML = correct
+    ? `Identified with <span>${revealStage}</span> shown · <span>×${mult}</span> multiplier`
+    : `The flag was fully revealed`;
+
+  document.getElementById('btn-next').textContent = curr >= TOTAL-1 ? '🏆 Final Score' : 'Next Flag →';
+  card.classList.add('show');
+  updateHUD();
+}
+
+function nextRound() {
+  curr++;
+  if (curr >= TOTAL) { showFinal(); return; }
+  loadRound();
+}
+
+function showFinal() {
+  document.getElementById('result-card').classList.remove('show');
+  document.getElementById('answer-section').style.display = 'none';
+  document.getElementById('flag-container').style.display = 'none';
+  document.getElementById('reveal-btn').style.display = 'none';
+  document.getElementById('reveal-status').style.display = 'none';
+
+  const fs = document.getElementById('final-screen');
+  document.getElementById('final-score').textContent = totalScore.toLocaleString();
+  document.getElementById('final-max').textContent = `out of ${(TOTAL * BASE_SCORE * 4).toLocaleString()} possible`;
+
+  const pct = totalScore / (TOTAL * BASE_SCORE * 4);
+  const g = document.getElementById('final-grade');
+  if (pct > .85)      { g.textContent='🏆 Vexillology Expert';  g.className='final-grade fg-perfect'; }
+  else if (pct > .60) { g.textContent='🌍 Flag Enthusiast';     g.className='final-grade fg-great'; }
+  else if (pct > .35) { g.textContent='🗺️ Casual Collector';   g.className='final-grade fg-ok'; }
+  else                { g.textContent='📚 Keep Studying';        g.className='final-grade fg-miss'; }
+
+  fs.classList.add('show');
+}
+</script>
+</body>
+</html>
