@@ -148,7 +148,7 @@ header {
   color: var(--text); font-family: 'IBM Plex Sans', sans-serif;
   font-size: 13px; padding: 10px 12px; border-radius: 4px;
   cursor: pointer; text-align: left; transition: all .15s;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: normal; overflow: visible; font-size: 12px;
 }
 .country-btn:hover { background: var(--border); border-color: var(--blue); color: var(--cyan); }
 .country-btn.correct { background: rgba(16,185,129,.12); border-color: var(--green); color: var(--green); }
@@ -640,8 +640,12 @@ function loadRound() {
   syncPips();
   updateHUD();
 
-  // Draw flag
-  document.getElementById('flag-svg').innerHTML = currentFlag.svg;
+  // Draw flag - hide first to prevent flash before covers are applied
+  const flagSvg = document.getElementById('flag-svg');
+  flagSvg.style.visibility = 'hidden';
+  flagSvg.innerHTML = currentFlag.svg;
+  // Use requestAnimationFrame to ensure covers are painted before revealing
+  requestAnimationFrame(() => { flagSvg.style.visibility = 'visible'; });
 
   // Build country grid
   buildCountryGrid(ALL_COUNTRIES);
